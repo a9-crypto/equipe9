@@ -74,7 +74,7 @@ Pour repartir des données de démonstration, supprimez `data/mantis.sqlite`. La
 |---|---|
 | `outils/php/php.exe outils/tests/smoke.php` | `php outils/tests/smoke.php` |
 
-Les tests de fumée comptent 36 tests. Ils utilisent une base temporaire.
+Les tests de fumée comptent 42 tests. Ils utilisent une base temporaire.
 
 ## Limites connues
 

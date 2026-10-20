@@ -96,6 +96,16 @@ $r2 = api_handle('GET', '/api/tickets', ['overdue' => '1']);
 verifie('filtre en retard : ticket résolu exclu', !in_array($idRetard, array_column($r2['body'], 'id'), true));
 api_handle('DELETE', "/api/tickets/$idRetard");
 
+// Échéance invalide : refusée à la création comme à la modification
+foreach (['abc', -5, 0, '12.5'] as $mauvaise) {
+    $r2 = api_handle('POST', '/api/tickets', [], ['project_id' => 1, 'summary' => 'Test', 'description' => 'Test.', 'due_date' => $mauvaise]);
+    verifie('échéance invalide refusée à la création (422) : ' . json_encode($mauvaise), $r2['status'] === 422, $r2);
+}
+$r2 = api_handle('PATCH', "/api/tickets/$id", [], ['due_date' => 'demain']);
+verifie('échéance invalide refusée à la modification (422)', $r2['status'] === 422, $r2);
+$r2 = api_handle('PATCH', "/api/tickets/$id", [], ['due_date' => null]);
+verifie('échéance effaçable (null)', $r2['status'] === 200 && $r2['body']['due_date'] === null, $r2);
+
 // Affectation : passage automatique au statut « Affecté »
 $r = api_handle('PATCH', "/api/tickets/$id", [], ['handler_id' => 2]);
 verifie('affectation : statut « Affecté »', ($r['body']['status'] ?? 0) === STATUS_ASSIGNED, $r);

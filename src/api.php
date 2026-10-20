@@ -433,7 +433,13 @@ function validate_fields(array $in, bool $creation, ?array $before = null): arra
     }
 
     if (array_key_exists('due_date', $in)) {
-        $out['due_date'] = ($in['due_date'] === null || $in['due_date'] === '') ? null : (int) $in['due_date'];
+        if ($in['due_date'] === null || $in['due_date'] === '') {
+            $out['due_date'] = null;
+        } elseif (filter_var($in['due_date'], FILTER_VALIDATE_INT) === false || (int) $in['due_date'] <= 0) {
+            throw new ApiError(422, 'L\'échéance doit être un horodatage entier positif.');
+        } else {
+            $out['due_date'] = (int) $in['due_date'];
+        }
     }
 
     return $out;
