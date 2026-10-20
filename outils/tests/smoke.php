@@ -50,6 +50,15 @@ verifie('filtre statut : seulement « Nouveau »', $r['body'] !== [] && array_un
 $r = api_handle('GET', '/api/tickets', ['handler_id' => 'none']);
 verifie('filtre non affectés', $r['body'] !== [] && array_unique(array_column($r['body'], 'handler_id')) === [null]);
 
+// Tableau de bord
+$r = api_handle('GET', '/api/stats');
+verifie('stats : statut 200', $r['status'] === 200, $r);
+verifie('stats : total = nombre de tickets', ($r['body']['total'] ?? -1) === $nb, $r);
+verifie('stats : somme par statut = total', array_sum($r['body']['by_status'] ?? []) === $nb, $r);
+$nonAffectes = api_handle('GET', '/api/tickets', ['handler_id' => 'none'])['body'];
+$nonAffectesOuverts = count(array_filter($nonAffectes, fn($t) => $t['status'] < STATUS_RESOLVED));
+verifie('stats : non affectés ouverts', ($r['body']['unassigned'] ?? -1) === $nonAffectesOuverts, $r);
+
 // Création
 $r = api_handle('POST', '/api/tickets', [], ['summary' => 'x']);
 verifie('création : projet obligatoire (422)', $r['status'] === 422, $r);

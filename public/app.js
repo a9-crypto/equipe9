@@ -59,14 +59,15 @@ const outils = {
 
 const ListeTickets = {
   props: ["params"],
-  setup() {
+  setup(props) {
     const tickets = ref([]);
     const chargement = ref(true);
     const erreur = ref('');
 
     onMounted(async () => {
       try {
-        tickets.value = await api('GET', '/api/tickets');
+        // Filtres venant de l'adresse (ex. #/?handler_id=none), transmis tels quels à l'API
+        tickets.value = await api('GET', '/api/tickets' + (props.params[0] ? '?' + props.params[0] : ''));
       } catch (e) {
         erreur.value = e.message;
       } finally {
@@ -113,6 +114,83 @@ const ListeTickets = {
   `,
 };
 
+const TableauDeBord = {
+  props: ["params"],
+  setup() {
+    const stats = ref(null);
+    const erreur = ref('');
+
+    onMounted(async () => {
+      try {
+        stats.value = await api('GET', '/api/stats');
+      } catch (e) {
+        erreur.value = e.message;
+      }
+    });
+
+    const parStatut = computed(() => etat.meta.enums.status.map((s) => ({ ...s, n: stats.value.by_status[s.id] ?? 0 })));
+    const parPriorite = computed(() => [...etat.meta.enums.priority].reverse()
+      .map((p) => ({ ...p, n: stats.value.by_priority[p.id] ?? 0 })).filter((p) => p.n > 0));
+
+    return { stats, erreur, parStatut, parPriorite, ...outils };
+  },
+  template: `
+    <h1 class="h4 mb-3">Tableau de bord</h1>
+    <div v-if="erreur" class="alert alert-danger">{{ erreur }}</div>
+    <div v-else-if="!stats" class="text-secondary">Chargement…</div>
+    <template v-else>
+      <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+          <a href="#/" class="text-decoration-none text-body">
+            <div class="card text-center shadow-sm"><div class="card-body">
+              <div class="display-6">{{ stats.total }}</div><div class="text-secondary">Tickets au total</div>
+            </div></div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a href="#/?handler_id=none" class="text-decoration-none text-body">
+            <div class="card text-center shadow-sm border-warning"><div class="card-body">
+              <div class="display-6">{{ stats.unassigned }}</div><div class="text-secondary">Non affectés</div>
+            </div></div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a href="#/?overdue=1" class="text-decoration-none text-body">
+            <div class="card text-center shadow-sm border-danger"><div class="card-body">
+              <div class="display-6 text-danger">{{ stats.overdue }}</div><div class="text-secondary">En retard</div>
+            </div></div>
+          </a>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-7">
+          <div class="card shadow-sm">
+            <div class="card-header">Tickets par statut</div>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item d-flex justify-content-between" v-for="s in parStatut" :key="s.id">
+                <a :href="'#/?status=' + s.id" class="text-decoration-none text-body">{{ s.label }}</a>
+                <span class="badge badge-statut" :style="{ background: s.color }">{{ s.n }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="card shadow-sm">
+            <div class="card-header">Tickets ouverts par priorité</div>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item d-flex justify-content-between" v-for="p in parPriorite" :key="p.id">
+                <span :class="'priorite-' + p.id">{{ p.label }}</span>
+                <span class="badge text-bg-secondary">{{ p.n }}</span>
+              </li>
+              <li class="list-group-item text-secondary" v-if="!parPriorite.length">Aucun ticket ouvert.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </template>
+  `,
+};
+
 const PageIntrouvable = {
   props: ["params"],
   template: `
@@ -129,12 +207,14 @@ const PageIntrouvable = {
 
 // Chaque route : un motif sur l'ancre et un composant. Les groupes capturés arrivent dans params.
 const ROUTES = [
-  { motif: /^#?\/?$/, vue: ListeTickets },
+  { motif: /^#?\/?(?:\?(.*))?$/, vue: ListeTickets },
+  { motif: /^#\/tableau-de-bord$/, vue: TableauDeBord },
 ];
 
 // Liens de la barre de navigation
 const MENU = [
   { href: '#/', label: 'Tickets', icone: 'bi-list-ul' },
+  { href: '#/tableau-de-bord', label: 'Tableau de bord', icone: 'bi-speedometer2' },
 ];
 
 createApp({
@@ -159,8 +239,14 @@ createApp({
       return { vue: PageIntrouvable, params: [] };
     });
 
+    // « Tickets » reste actif pour la liste (avec ou sans filtres) et pour la fiche d'un ticket
+    const actif = (lien) => (lien.href === '#/'
+      ? /^#?\/?(\?.*)?$/.test(route.value) || route.value.startsWith('#/ticket/')
+      : route.value.startsWith(lien.href));
+
     return {
       route,
+      actif,
       erreur,
       menu: MENU,
       meta: computed(() => etat.meta),

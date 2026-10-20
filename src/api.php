@@ -3,7 +3,8 @@
  * API JSON Mantis-lite.
  *
  *   GET    /api/meta                    listes de valeurs, projets, catégories, utilisateurs
- *   GET    /api/tickets                 liste (filtres : project_id, status, handler_id, q)
+ *   GET    /api/stats                   compteurs (par statut, par priorité, non affectés, en retard)
+ *   GET    /api/tickets                 liste (filtres : project_id, status, handler_id, q, overdue)
  *   POST   /api/tickets                 création
  *   GET    /api/tickets/{id}            fiche complète (texte, notes, historique)
  *   PATCH  /api/tickets/{id}            modification partielle
@@ -43,6 +44,9 @@ function api_handle(string $method, string $path, array $query = [], ?array $bod
 
         if ($path === '/api/meta' && $method === 'GET') {
             return ok(meta());
+        }
+        if ($path === '/api/stats' && $method === 'GET') {
+            return ok(stats());
         }
         if ($path === '/api/tickets') {
             return match ($method) {
@@ -88,6 +92,34 @@ function meta(): array
         'projects' => db_all('SELECT id, name, description FROM mantis_project_table WHERE enabled = 1 ORDER BY name'),
         'categories' => db_all('SELECT id, project_id, name FROM mantis_category_table ORDER BY name'),
         'users' => db_all('SELECT id, username, realname, access_level FROM mantis_user_table WHERE enabled = 1 ORDER BY realname'),
+    ];
+}
+
+// ---------------------------------------------------------------------------
+// Tableau de bord
+// ---------------------------------------------------------------------------
+
+/** Compteurs : total, par statut, par priorité (tickets ouverts), non affectés et en retard (tickets ouverts). */
+function stats(): array
+{
+    $open = 'status < ' . STATUS_RESOLVED;
+    $byStatus = [];
+    foreach (db_all('SELECT status, COUNT(*) AS n FROM mantis_bug_table GROUP BY status') as $row) {
+        $byStatus[(string) $row['status']] = (int) $row['n'];
+    }
+    $byPriority = [];
+    foreach (db_all("SELECT priority, COUNT(*) AS n FROM mantis_bug_table WHERE $open GROUP BY priority") as $row) {
+        $byPriority[(string) $row['priority']] = (int) $row['n'];
+    }
+    return [
+        'total' => array_sum($byStatus),
+        'by_status' => $byStatus,
+        'by_priority' => $byPriority,
+        'unassigned' => (int) db_one("SELECT COUNT(*) AS n FROM mantis_bug_table WHERE handler_id IS NULL AND $open")['n'],
+        'overdue' => (int) db_one(
+            "SELECT COUNT(*) AS n FROM mantis_bug_table WHERE $open AND due_date IS NOT NULL AND due_date < ?",
+            [time()]
+        )['n'],
     ];
 }
 
