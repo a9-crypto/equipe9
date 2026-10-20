@@ -16,9 +16,9 @@ Les responsables d'équipe pilotent le support : ils veulent voir d'un coup d'œ
 ### F2 – Affectation et changement de statut
 - Besoin : affecter un ticket à un utilisateur et changer son statut depuis la fiche ou la liste.
 - Critères d'acceptation :
-  - [ ] Depuis un ticket, une liste déroulante permet de choisir le responsable ; le ticket « Nouveau » passe à « Affecté ».
-  - [ ] Une liste déroulante permet de changer le statut ; le nouveau statut s'affiche immédiatement.
-  - [ ] Passer à « Résolu » ou « Fermé » met la résolution à « Corrigé » si elle était ouverte.
+  - [x] Depuis un ticket, une liste déroulante permet de choisir le responsable ; le ticket « Nouveau » passe à « Affecté ».
+  - [x] Une liste déroulante permet de changer le statut ; le nouveau statut s'affiche immédiatement.
+  - [x] Passer à « Résolu » ou « Fermé » met la résolution à « Corrigé » si elle était ouverte.
 - API : API existante, `PATCH /api/tickets/{id}` (champs `handler_id`, `status`, règles MantisBT déjà appliquées) et `GET /api/meta` pour les listes.
 
 ### F3 – Échéances et retards (SLA)

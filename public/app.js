@@ -75,7 +75,9 @@ const ListeTickets = {
       }
     });
 
-    return { tickets, chargement, erreur, ...outils };
+    const ouvrir = (id) => { location.hash = `#/ticket/${id}`; };
+
+    return { tickets, chargement, erreur, ouvrir, ...outils };
   },
   template: `
     <div class="d-flex align-items-center mb-3">
@@ -94,7 +96,7 @@ const ListeTickets = {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="t in tickets" :key="t.id">
+            <tr v-for="t in tickets" :key="t.id" @click="ouvrir(t.id)">
               <td class="text-secondary">#{{ t.id }}</td>
               <td>{{ t.summary }}</td>
               <td class="small">{{ t.project }}<div class="text-secondary">{{ t.category }}</div></td>
@@ -191,6 +193,112 @@ const TableauDeBord = {
   `,
 };
 
+const FicheTicket = {
+  props: ["params"],
+  setup(props) {
+    const ticket = ref(null);
+    const erreur = ref('');
+    const message = ref('');
+    const enCours = ref(false);
+    const form = reactive({ handler_id: '', status: 10 });
+
+    const remplir = (t) => {
+      ticket.value = t;
+      form.handler_id = t.handler_id ?? '';
+      form.status = t.status;
+    };
+
+    onMounted(async () => {
+      try {
+        remplir(await api('GET', `/api/tickets/${props.params[0]}`));
+      } catch (e) {
+        erreur.value = e.message;
+      }
+    });
+
+    async function enregistrer() {
+      enCours.value = true;
+      erreur.value = '';
+      message.value = '';
+      try {
+        // Seuls les champs modifiés sont envoyés : l'API passe alors un ticket « Nouveau » à « Affecté » toute seule
+        const corps = {};
+        if (form.handler_id !== (ticket.value.handler_id ?? '')) {
+          corps.handler_id = form.handler_id === '' ? null : Number(form.handler_id);
+        }
+        if (Number(form.status) !== ticket.value.status) {
+          corps.status = Number(form.status);
+        }
+        if (Object.keys(corps).length === 0) {
+          message.value = 'Aucune modification.';
+          return;
+        }
+        remplir(await api('PATCH', `/api/tickets/${ticket.value.id}`, corps));
+        message.value = 'Modifications enregistrées.';
+      } catch (e) {
+        erreur.value = e.message;
+      } finally {
+        enCours.value = false;
+      }
+    }
+
+    const techniciens = computed(() => etat.meta.users);
+    return { ticket, erreur, message, enCours, form, enregistrer, techniciens, statuts: computed(() => etat.meta.enums.status), ...outils };
+  },
+  template: `
+    <a href="#/" class="small text-decoration-none"><i class="bi bi-arrow-left me-1"></i>Retour aux tickets</a>
+    <div v-if="erreur && !ticket" class="alert alert-danger mt-3">{{ erreur }}</div>
+    <div v-else-if="!ticket" class="text-secondary mt-3">Chargement…</div>
+    <div v-else class="row g-3 mt-1">
+      <div class="col-md-8">
+        <div class="card shadow-sm">
+          <div class="card-header"><strong>#{{ ticket.id }}</strong> · {{ ticket.summary }}</div>
+          <div class="card-body">
+            <p class="text-secondary small mb-1">
+              {{ ticket.project }}<span v-if="ticket.category"> · {{ ticket.category }}</span>
+              · déclaré par {{ ticket.reporter }} le {{ dateHeure(ticket.date_submitted) }}
+            </p>
+            <p class="mb-3" style="white-space: pre-wrap">{{ ticket.description }}</p>
+            <hr>
+            <h2 class="h6">Historique</h2>
+            <ul class="small text-secondary mb-0">
+              <li v-for="h in ticket.history" :key="h.id">
+                {{ dateHeure(h.date_modified) }} · {{ h.user }} :
+                <template v-if="h.type === 1">ticket créé</template>
+                <template v-else-if="h.type === 2">note ajoutée</template>
+                <template v-else-if="h.field_name === 'status'">statut {{ libelle('status', Number(h.old_value)) }} → {{ libelle('status', Number(h.new_value)) }}</template>
+                <template v-else-if="h.field_name === 'handler_id'">responsable modifié</template>
+                <template v-else>{{ h.field_name }} modifié</template>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm">
+          <div class="card-header">Traitement</div>
+          <form class="card-body" @submit.prevent="enregistrer">
+            <div v-if="erreur" class="alert alert-danger py-2">{{ erreur }}</div>
+            <div v-if="message" class="alert alert-success py-2">{{ message }}</div>
+            <label class="form-label" for="responsable">Responsable</label>
+            <select id="responsable" class="form-select mb-3" v-model="form.handler_id">
+              <option value="">— Non affecté —</option>
+              <option v-for="u in techniciens" :key="u.id" :value="u.id">{{ u.realname }}</option>
+            </select>
+            <label class="form-label" for="statut">Statut</label>
+            <select id="statut" class="form-select mb-3" v-model="form.status">
+              <option v-for="s in statuts" :key="s.id" :value="s.id">{{ s.label }}</option>
+            </select>
+            <div class="mb-1 small text-secondary">Priorité : <span :class="'priorite-' + ticket.priority">{{ libelle('priority', ticket.priority) }}</span></div>
+            <div class="mb-3 small text-secondary">Résolution : {{ libelle('resolution', ticket.resolution) }}</div>
+            <button class="btn btn-primary w-100" :disabled="enCours"><i class="bi bi-check2 me-1"></i>Enregistrer</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `,
+};
+
 const PageIntrouvable = {
   props: ["params"],
   template: `
@@ -209,6 +317,7 @@ const PageIntrouvable = {
 const ROUTES = [
   { motif: /^#?\/?(?:\?(.*))?$/, vue: ListeTickets },
   { motif: /^#\/tableau-de-bord$/, vue: TableauDeBord },
+  { motif: /^#\/ticket\/(\d+)$/, vue: FicheTicket },
 ];
 
 // Liens de la barre de navigation

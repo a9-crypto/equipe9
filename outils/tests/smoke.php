@@ -81,6 +81,15 @@ verifie('affectation : statut « Affecté »', ($r['body']['status'] ?? 0) === S
 $r = api_handle('PATCH', "/api/tickets/$id", [], ['status' => STATUS_RESOLVED]);
 verifie('résolution : « Corrigé »', ($r['body']['resolution'] ?? 0) === RESOLUTION_FIXED, $r);
 
+// Fermeture directe : résolution « Corrigé » si elle était ouverte
+$r = api_handle('POST', '/api/tickets', [], ['project_id' => 1, 'summary' => 'À fermer', 'description' => 'Test fermeture.']);
+$idFerme = $r['body']['id'] ?? 0;
+$r = api_handle('PATCH', "/api/tickets/$idFerme", [], ['status' => STATUS_CLOSED]);
+verifie('fermeture : « Corrigé »', ($r['body']['resolution'] ?? 0) === RESOLUTION_FIXED, $r);
+$r = api_handle('PATCH', "/api/tickets/$idFerme", [], ['handler_id' => null, 'status' => STATUS_NEW]);
+verifie('réouverture : « Réouvert »', ($r['body']['resolution'] ?? 0) === 30, $r);
+api_handle('DELETE', "/api/tickets/$idFerme");
+
 // Valeur invalide
 $r = api_handle('PATCH', "/api/tickets/$id", [], ['priority' => 999]);
 verifie('priorité invalide (422)', $r['status'] === 422, $r);
