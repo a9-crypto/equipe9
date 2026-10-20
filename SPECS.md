@@ -24,9 +24,9 @@ Les responsables d'équipe pilotent le support : ils veulent voir d'un coup d'œ
 ### F3 – Échéances et retards (SLA)
 - Besoin : repérer les tickets en retard selon un délai cible par priorité.
 - Critères d'acceptation :
-  - [ ] Chaque ticket ouvert affiche son échéance (champ `due_date`) ; un badge « En retard » apparaît si elle est dépassée.
-  - [ ] À la création, l'échéance est calculée selon la priorité : Immédiate 4 h, Urgente 1 j, Élevée 2 j, Normale 5 j, Basse 10 j.
-  - [ ] Un filtre « En retard » dans la liste n'affiche que les tickets ouverts dont l'échéance est dépassée.
+  - [x] Chaque ticket ouvert affiche son échéance (champ `due_date`) ; un badge « En retard » apparaît si elle est dépassée.
+  - [x] À la création, l'échéance est calculée selon la priorité : Immédiate 4 h, Urgente 1 j, Élevée 2 j, Normale 5 j, Basse 10 j.
+  - [x] Un filtre « En retard » dans la liste n'affiche que les tickets ouverts dont l'échéance est dépassée.
 - API : le champ `due_date` existe (`POST` et `PATCH /api/tickets`). Modification minimale : calcul par défaut de `due_date` selon la priorité dans `ticket_create`, et nouveau filtre `overdue=1` dans `ticket_list`.
 
 ## Hors périmètre

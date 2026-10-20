@@ -153,7 +153,7 @@ function ticket_cast(array $row): array
     return $row;
 }
 
-/** Filtres : project_id, status (liste séparée par des virgules), handler_id ("none" = non affecté), q (texte). */
+/** Filtres : project_id, status (liste séparée par des virgules), handler_id ("none" = non affecté), overdue ("1" = en retard), q (texte). */
 function ticket_list(array $query): array
 {
     $where = [];
@@ -175,6 +175,11 @@ function ticket_list(array $query): array
             $where[] = 'b.handler_id = ?';
             $params[] = (int) $query['handler_id'];
         }
+    }
+    // En retard : ticket ouvert (avant « Résolu ») dont l'échéance est dépassée
+    if (isset($query['overdue']) && $query['overdue'] === '1') {
+        $where[] = 'b.status < ? AND b.due_date IS NOT NULL AND b.due_date < ?';
+        array_push($params, STATUS_RESOLVED, time());
     }
     if (isset($query['q']) && trim((string) $query['q']) !== '') {
         $where[] = 'b.summary LIKE ?';
@@ -220,6 +225,12 @@ function ticket_create(array $in, int $userId): array
     }
     $data = validate_fields($in, true);
     $now = time();
+
+    // Échéance : celle fournie, sinon calculée selon la priorité (délai cible).
+    if (!array_key_exists('due_date', $data)) {
+        $delai = SLA_DELAIS[$data['priority'] ?? 30] ?? null;
+        $data['due_date'] = $delai === null ? null : $now + $delai;
+    }
 
     // Règle MantisBT : un ticket créé avec un responsable passe au statut « Affecté ».
     $status = !empty($data['handler_id']) ? STATUS_ASSIGNED : STATUS_NEW;

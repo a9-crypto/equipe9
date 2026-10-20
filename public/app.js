@@ -6,7 +6,7 @@
  * Pour ajouter un écran : créer un composant, puis l'ajouter à ROUTES et, si besoin, à MENU.
  */
 
-const { createApp, reactive, ref, computed, onMounted } = Vue;
+const { createApp, reactive, ref, computed, onMounted, watch } = Vue;
 
 // ---------------------------------------------------------------------------
 // API
@@ -45,6 +45,21 @@ const outils = {
   dateHeure(ts) {
     return ts ? new Date(ts * 1000).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
   },
+  // Échéance : un ticket est en retard s'il est ouvert (avant « Résolu ») et son échéance est passée
+  enRetardTicket(t) {
+    return t.status < 80 && t.due_date !== null && t.due_date < Date.now() / 1000;
+  },
+  duree(secondes) {
+    if (secondes < 3600) return `${Math.max(1, Math.floor(secondes / 60))} min`;
+    if (secondes < 86400) return `${Math.floor(secondes / 3600)} h`;
+    return `${Math.floor(secondes / 86400)} j`;
+  },
+  dureeRetard(ts) {
+    return outils.duree(Date.now() / 1000 - ts);
+  },
+  dansDelai(ts) {
+    return `dans ${outils.duree(ts - Date.now() / 1000)}`;
+  },
   depuis(ts) {
     const secondes = Math.floor(Date.now() / 1000) - ts;
     if (secondes < 3600) return `il y a ${Math.max(1, Math.floor(secondes / 60))} min`;
@@ -64,25 +79,35 @@ const ListeTickets = {
     const chargement = ref(true);
     const erreur = ref('');
 
-    onMounted(async () => {
+    // Filtres venant de l'adresse (ex. #/?handler_id=none), transmis tels quels à l'API
+    async function charger() {
       try {
-        // Filtres venant de l'adresse (ex. #/?handler_id=none), transmis tels quels à l'API
+        erreur.value = '';
         tickets.value = await api('GET', '/api/tickets' + (props.params[0] ? '?' + props.params[0] : ''));
       } catch (e) {
         erreur.value = e.message;
       } finally {
         chargement.value = false;
       }
-    });
+    }
+    onMounted(charger);
+    watch(() => props.params[0], charger);
 
+    // Interrupteur « En retard uniquement » : il modifie l'adresse, la liste se recharge toute seule
+    const enRetard = computed(() => new URLSearchParams(props.params[0] || '').get('overdue') === '1');
+    const basculerRetard = () => { location.hash = enRetard.value ? '#/' : '#/?overdue=1'; };
     const ouvrir = (id) => { location.hash = `#/ticket/${id}`; };
 
-    return { tickets, chargement, erreur, ouvrir, ...outils };
+    return { tickets, chargement, erreur, enRetard, basculerRetard, ouvrir, ...outils };
   },
   template: `
     <div class="d-flex align-items-center mb-3">
       <h1 class="h4 mb-0">Tickets</h1>
       <span class="badge text-bg-secondary ms-2">{{ tickets.length }}</span>
+      <div class="form-check form-switch ms-4 mb-0">
+        <input class="form-check-input" type="checkbox" id="filtre-retard" :checked="enRetard" @change="basculerRetard">
+        <label class="form-check-label" for="filtre-retard">En retard uniquement</label>
+      </div>
     </div>
     <div v-if="erreur" class="alert alert-danger">{{ erreur }}</div>
     <div v-else-if="chargement" class="text-secondary">Chargement…</div>
@@ -92,10 +117,11 @@ const ListeTickets = {
           <thead class="table-light">
             <tr>
               <th>N°</th><th>Résumé</th><th>Projet</th><th>Statut</th>
-              <th>Priorité</th><th>Responsable</th><th>Mis à jour</th>
+              <th>Priorité</th><th>Responsable</th><th>Échéance</th><th>Mis à jour</th>
             </tr>
           </thead>
           <tbody>
+            <tr v-if="!tickets.length"><td colspan="8" class="text-center text-secondary py-4">Aucun ticket.</td></tr>
             <tr v-for="t in tickets" :key="t.id" @click="ouvrir(t.id)">
               <td class="text-secondary">#{{ t.id }}</td>
               <td>{{ t.summary }}</td>
@@ -107,6 +133,13 @@ const ListeTickets = {
               </td>
               <td :class="'priorite-' + t.priority">{{ libelle('priority', t.priority) }}</td>
               <td>{{ t.handler || '—' }}</td>
+              <td>
+                <span v-if="enRetardTicket(t)" class="badge text-bg-danger">
+                  <i class="bi bi-alarm me-1"></i>En retard · {{ dureeRetard(t.due_date) }}
+                </span>
+                <span v-else-if="t.due_date && t.status < 80" class="small text-secondary" :title="dateHeure(t.due_date)">{{ dansDelai(t.due_date) }}</span>
+                <span v-else class="text-secondary">—</span>
+              </td>
               <td class="small text-secondary" :title="dateHeure(t.last_updated)">{{ depuis(t.last_updated) }}</td>
             </tr>
           </tbody>
@@ -252,7 +285,10 @@ const FicheTicket = {
     <div v-else class="row g-3 mt-1">
       <div class="col-md-8">
         <div class="card shadow-sm">
-          <div class="card-header"><strong>#{{ ticket.id }}</strong> · {{ ticket.summary }}</div>
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><strong>#{{ ticket.id }}</strong> · {{ ticket.summary }}</span>
+            <span v-if="enRetardTicket(ticket)" class="badge text-bg-danger"><i class="bi bi-alarm me-1"></i>En retard · {{ dureeRetard(ticket.due_date) }}</span>
+          </div>
           <div class="card-body">
             <p class="text-secondary small mb-1">
               {{ ticket.project }}<span v-if="ticket.category"> · {{ ticket.category }}</span>
@@ -290,7 +326,11 @@ const FicheTicket = {
               <option v-for="s in statuts" :key="s.id" :value="s.id">{{ s.label }}</option>
             </select>
             <div class="mb-1 small text-secondary">Priorité : <span :class="'priorite-' + ticket.priority">{{ libelle('priority', ticket.priority) }}</span></div>
-            <div class="mb-3 small text-secondary">Résolution : {{ libelle('resolution', ticket.resolution) }}</div>
+            <div class="mb-1 small text-secondary">Résolution : {{ libelle('resolution', ticket.resolution) }}</div>
+            <div class="mb-3 small text-secondary">
+              Échéance : {{ dateHeure(ticket.due_date) }}
+              <span v-if="enRetardTicket(ticket)" class="badge text-bg-danger ms-1"><i class="bi bi-alarm me-1"></i>En retard · {{ dureeRetard(ticket.due_date) }}</span>
+            </div>
             <button class="btn btn-primary w-100" :disabled="enCours"><i class="bi bi-check2 me-1"></i>Enregistrer</button>
           </form>
         </div>
