@@ -1,0 +1,86 @@
+# Vérification automatique sur Windows : PHP portable du dépôt, tests de fumée, serveur local.
+# Se lance sur chaque pull request, ou à la main (onglet Actions > Run workflow).
+name: Vérification Windows
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP portable
+        run: |
+          outils\php\php.exe -v
+          outils\php\php.exe --ini
+          $modules = outils\php\php.exe -m
+          if (-not ($modules -contains 'pdo_sqlite')) { throw 'pdo_sqlite absent' }
+
+      - name: Tests de fumée
+        run: outils\php\php.exe outils\tests\smoke.php
+
+      - name: Contrôle du poste (mode CI)
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File outils\verifier-poste.ps1 -CI
+
+      - name: Garde-fou main (hook Claude Code)
+        shell: bash
+        run: |
+          git switch -c main-test 2>/dev/null || true
+          git branch -f main HEAD 2>/dev/null || true
+          git switch main
+          entree='{"tool_name":"Bash","tool_input":{"command":"git commit -m \"x\""}}'
+          set +e
+          printf '%s' "$entree" | CLAUDE_PROJECT_DIR=$PWD bash .claude/hooks/garde-main.sh
+          code=$?
+          set -e
+          echo "code de sortie : $code"
+          test "$code" = "2"
+
+  # Kit portable (plan B) : simule un poste sans Git, avec un dossier issu de "Download ZIP".
+  # Lancement manuel uniquement, pour ne pas extraire 60 Mo à chaque pull request.
+  kit-portable:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Préparer un faux zip et un faux GitHub
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'zip'
+          robocopy . $zip /E /XD .git /NFL /NDL /NJH /NJS | Out-Null
+          if ($LASTEXITCODE -ge 8) { throw "robocopy en échec ($LASTEXITCODE)" }
+          git clone -q --bare . (Join-Path $env:RUNNER_TEMP 'origin.git')
+          "ZIP=$zip" | Out-File -Append $env:GITHUB_ENV
+          "ORIGIN=$(Join-Path $env:RUNNER_TEMP 'origin.git')" | Out-File -Append $env:GITHUB_ENV
+          "PG=$(Join-Path $env:RUNNER_TEMP 'atelier-git')" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Lancer installer.ps1 (Windows PowerShell 5.1)
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File "$env:ZIP\outils\installer.ps1" -Depot "$env:ORIGIN" -Destination "$env:PG" -ForcerPortable -SansVariables
+
+      - name: Vérifier Git portable, Git Bash, liaison et garde-fou
+        shell: pwsh
+        run: |
+          & "$env:PG\cmd\git.exe" --version
+          $etat = & "$env:PG\cmd\git.exe" -C $env:ZIP status --porcelain
+          if ($etat) { $etat; throw 'Le dossier diffère du dépôt' }
+          & "$env:PG\cmd\git.exe" -C $env:ZIP log --oneline -1
+          & "$env:PG\bin\bash.exe" -c 'echo "Git Bash : OK"'
+          if (Test-Path "$env:PG\post-install.bat") { throw 'post-install.bat non exécuté' }
+          $entree = '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}'
+          $env:CLAUDE_PROJECT_DIR = $env:ZIP
+          $entree | & "$env:PG\bin\bash.exe" "$env:ZIP/.claude/hooks/garde-main.sh"
+          "code du garde-fou : $LASTEXITCODE"
+          if ($LASTEXITCODE -ne 2) { throw 'Le garde-fou ne bloque pas le commit sur main' }
+          $global:LASTEXITCODE = 0
+

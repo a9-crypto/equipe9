@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ticketing</title>
+  <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body class="bg-body-tertiary">
+  <div id="app" v-cloak>
+    <nav class="navbar navbar-expand bg-dark" data-bs-theme="dark">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#/"><i class="bi bi-ticket-detailed me-2"></i>Ticketing</a>
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item" v-for="lien in menu" :key="lien.href">
+            <a class="nav-link" :class="{ active: route.startsWith(lien.href) }" :href="lien.href">
+              <i class="bi me-1" :class="lien.icone"></i>{{ lien.label }}
+            </a>
+          </li>
+        </ul>
+        <span class="navbar-text small" v-if="utilisateur">
+          <i class="bi bi-person-circle me-1"></i>{{ utilisateur.realname }}
+        </span>
+      </div>
+    </nav>
+
+    <main class="container-fluid py-4">
+      <div v-if="erreur" class="alert alert-danger">{{ erreur }}</div>
+      <div v-if="!meta && !erreur" class="text-center text-secondary py-5">
+        <div class="spinner-border" role="status"></div>
+      </div>
+      <component v-else-if="meta" :is="vue" :params="params"></component>
+    </main>
+  </div>
+
+  <script src="/vendor/vue/vue.global.prod.js"></script>
+  <script src="/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

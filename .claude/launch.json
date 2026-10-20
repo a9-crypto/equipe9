@@ -1,0 +1,27 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      // Windows : PHP portable livré dans outils/php. cmd résout le chemin relatif depuis la racine du projet.
+      "name": "atelier (Windows)",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "outils\\php\\php.exe", "outils/serveur.php"],
+      "port": 8000,
+      "autoPort": true
+    },
+    {
+      // macOS / Linux : PHP installé sur le poste (brew install php)
+      "name": "atelier (Mac-Linux)",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["outils/serveur.php"],
+      "port": 8000,
+      "autoPort": true
+    },
+    {
+      // Secours : serveur déjà lancé à la main avec « php outils/serveur.php »
+      "name": "atelier (déjà lancé)",
+      "url": "http://localhost:8000",
+      "port": 8000
+    }
+  ]
+}

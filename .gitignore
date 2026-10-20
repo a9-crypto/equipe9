@@ -1,0 +1,7 @@
+# Base de travail locale (recréée automatiquement)
+data/
+# Réglages personnels Claude Code
+.claude/settings.local.json
+# Systèmes
+.DS_Store
+Thumbs.db

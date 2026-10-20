@@ -1,0 +1,13 @@
+[v-cloak] { display: none; }
+
+.badge-statut {
+  color: #212529;
+  font-weight: 500;
+  border: 1px solid rgba(0, 0, 0, .1);
+}
+
+.table-tickets td { vertical-align: middle; }
+.table-tickets tbody tr { cursor: pointer; }
+
+.priorite-50, .priorite-60 { color: var(--bs-danger); }
+.priorite-40 { color: var(--bs-warning-text-emphasis); }
