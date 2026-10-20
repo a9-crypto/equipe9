@@ -183,7 +183,7 @@ const TableauDeBord = {
           </a>
         </div>
         <div class="col-6 col-md-3">
-          <a href="#/?handler_id=none" class="text-decoration-none text-body">
+          <a href="#/?handler_id=none&status=10,20,30,40,50" class="text-decoration-none text-body">
             <div class="card text-center shadow-sm border-warning"><div class="card-body">
               <div class="display-6">{{ stats.unassigned }}</div><div class="text-secondary">Non affectés</div>
             </div></div>
