@@ -15,7 +15,7 @@
         <a class="navbar-brand" href="#/"><i class="bi bi-ticket-detailed me-2"></i>Ticketing</a>
         <ul class="navbar-nav me-auto">
           <li class="nav-item" v-for="lien in menu" :key="lien.href">
-            <a class="nav-link" :class="{ active: route.startsWith(lien.href) }" :href="lien.href">
+            <a class="nav-link" :class="{ active: actif(lien) }" :href="lien.href">
               <i class="bi me-1" :class="lien.icone"></i>{{ lien.label }}
             </a>
           </li>

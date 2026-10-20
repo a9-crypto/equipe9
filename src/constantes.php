@@ -28,6 +28,15 @@ const STATUS_CLOSED = 90;
 const RESOLUTION_OPEN = 10;
 const RESOLUTION_FIXED = 20;
 
+// Délai cible (en secondes) avant l'échéance, selon la priorité. Priorité « Aucune » : pas d'échéance.
+const SLA_DELAIS = [
+    20 => 10 * 86400,  // Basse
+    30 => 5 * 86400,   // Normale
+    40 => 2 * 86400,   // Élevée
+    50 => 86400,       // Urgente
+    60 => 4 * 3600,    // Immédiate
+];
+
 // Types d'historique
 const HISTORY_NORMAL = 0;
 const HISTORY_NEW_BUG = 1;

@@ -3,7 +3,8 @@
  * API JSON Mantis-lite.
  *
  *   GET    /api/meta                    listes de valeurs, projets, catégories, utilisateurs
- *   GET    /api/tickets                 liste (filtres : project_id, status, handler_id, q)
+ *   GET    /api/stats                   compteurs (par statut, par priorité, non affectés, en retard)
+ *   GET    /api/tickets                 liste (filtres : project_id, status, handler_id, q, overdue)
  *   POST   /api/tickets                 création
  *   GET    /api/tickets/{id}            fiche complète (texte, notes, historique)
  *   PATCH  /api/tickets/{id}            modification partielle
@@ -43,6 +44,9 @@ function api_handle(string $method, string $path, array $query = [], ?array $bod
 
         if ($path === '/api/meta' && $method === 'GET') {
             return ok(meta());
+        }
+        if ($path === '/api/stats' && $method === 'GET') {
+            return ok(stats());
         }
         if ($path === '/api/tickets') {
             return match ($method) {
@@ -92,6 +96,34 @@ function meta(): array
 }
 
 // ---------------------------------------------------------------------------
+// Tableau de bord
+// ---------------------------------------------------------------------------
+
+/** Compteurs : total, par statut, par priorité (tickets ouverts), non affectés et en retard (tickets ouverts). */
+function stats(): array
+{
+    $open = 'status < ' . STATUS_RESOLVED;
+    $byStatus = [];
+    foreach (db_all('SELECT status, COUNT(*) AS n FROM mantis_bug_table GROUP BY status') as $row) {
+        $byStatus[(string) $row['status']] = (int) $row['n'];
+    }
+    $byPriority = [];
+    foreach (db_all("SELECT priority, COUNT(*) AS n FROM mantis_bug_table WHERE $open GROUP BY priority") as $row) {
+        $byPriority[(string) $row['priority']] = (int) $row['n'];
+    }
+    return [
+        'total' => array_sum($byStatus),
+        'by_status' => $byStatus,
+        'by_priority' => $byPriority,
+        'unassigned' => (int) db_one("SELECT COUNT(*) AS n FROM mantis_bug_table WHERE handler_id IS NULL AND $open")['n'],
+        'overdue' => (int) db_one(
+            "SELECT COUNT(*) AS n FROM mantis_bug_table WHERE $open AND due_date IS NOT NULL AND due_date < ?",
+            [time()]
+        )['n'],
+    ];
+}
+
+// ---------------------------------------------------------------------------
 // Tickets
 // ---------------------------------------------------------------------------
 
@@ -121,7 +153,7 @@ function ticket_cast(array $row): array
     return $row;
 }
 
-/** Filtres : project_id, status (liste séparée par des virgules), handler_id ("none" = non affecté), q (texte). */
+/** Filtres : project_id, status (liste séparée par des virgules), handler_id ("none" = non affecté), overdue ("1" = en retard), q (texte). */
 function ticket_list(array $query): array
 {
     $where = [];
@@ -143,6 +175,11 @@ function ticket_list(array $query): array
             $where[] = 'b.handler_id = ?';
             $params[] = (int) $query['handler_id'];
         }
+    }
+    // En retard : ticket ouvert (avant « Résolu ») dont l'échéance est dépassée
+    if (isset($query['overdue']) && $query['overdue'] === '1') {
+        $where[] = 'b.status < ? AND b.due_date IS NOT NULL AND b.due_date < ?';
+        array_push($params, STATUS_RESOLVED, time());
     }
     if (isset($query['q']) && trim((string) $query['q']) !== '') {
         $where[] = 'b.summary LIKE ?';
@@ -188,6 +225,12 @@ function ticket_create(array $in, int $userId): array
     }
     $data = validate_fields($in, true);
     $now = time();
+
+    // Échéance : celle fournie, sinon calculée selon la priorité (délai cible).
+    if (!array_key_exists('due_date', $data)) {
+        $delai = SLA_DELAIS[$data['priority'] ?? 30] ?? null;
+        $data['due_date'] = $delai === null ? null : $now + $delai;
+    }
 
     // Règle MantisBT : un ticket créé avec un responsable passe au statut « Affecté ».
     $status = !empty($data['handler_id']) ? STATUS_ASSIGNED : STATUS_NEW;
@@ -390,7 +433,13 @@ function validate_fields(array $in, bool $creation, ?array $before = null): arra
     }
 
     if (array_key_exists('due_date', $in)) {
-        $out['due_date'] = ($in['due_date'] === null || $in['due_date'] === '') ? null : (int) $in['due_date'];
+        if ($in['due_date'] === null || $in['due_date'] === '') {
+            $out['due_date'] = null;
+        } elseif (filter_var($in['due_date'], FILTER_VALIDATE_INT) === false || (int) $in['due_date'] <= 0) {
+            throw new ApiError(422, 'L\'échéance doit être un horodatage entier positif.');
+        } else {
+            $out['due_date'] = (int) $in['due_date'];
+        }
     }
 
     return $out;

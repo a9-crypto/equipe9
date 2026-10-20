@@ -6,7 +6,7 @@
  * Pour ajouter un écran : créer un composant, puis l'ajouter à ROUTES et, si besoin, à MENU.
  */
 
-const { createApp, reactive, ref, computed, onMounted } = Vue;
+const { createApp, reactive, ref, computed, onMounted, watch } = Vue;
 
 // ---------------------------------------------------------------------------
 // API
@@ -45,6 +45,21 @@ const outils = {
   dateHeure(ts) {
     return ts ? new Date(ts * 1000).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
   },
+  // Échéance : un ticket est en retard s'il est ouvert (avant « Résolu ») et son échéance est passée
+  enRetardTicket(t) {
+    return t.status < 80 && t.due_date !== null && t.due_date < Date.now() / 1000;
+  },
+  duree(secondes) {
+    if (secondes < 3600) return `${Math.max(1, Math.floor(secondes / 60))} min`;
+    if (secondes < 86400) return `${Math.floor(secondes / 3600)} h`;
+    return `${Math.floor(secondes / 86400)} j`;
+  },
+  dureeRetard(ts) {
+    return outils.duree(Date.now() / 1000 - ts);
+  },
+  dansDelai(ts) {
+    return `dans ${outils.duree(ts - Date.now() / 1000)}`;
+  },
   depuis(ts) {
     const secondes = Math.floor(Date.now() / 1000) - ts;
     if (secondes < 3600) return `il y a ${Math.max(1, Math.floor(secondes / 60))} min`;
@@ -59,27 +74,40 @@ const outils = {
 
 const ListeTickets = {
   props: ["params"],
-  setup() {
+  setup(props) {
     const tickets = ref([]);
     const chargement = ref(true);
     const erreur = ref('');
 
-    onMounted(async () => {
+    // Filtres venant de l'adresse (ex. #/?handler_id=none), transmis tels quels à l'API
+    async function charger() {
       try {
-        tickets.value = await api('GET', '/api/tickets');
+        erreur.value = '';
+        tickets.value = await api('GET', '/api/tickets' + (props.params[0] ? '?' + props.params[0] : ''));
       } catch (e) {
         erreur.value = e.message;
       } finally {
         chargement.value = false;
       }
-    });
+    }
+    onMounted(charger);
+    watch(() => props.params[0], charger);
 
-    return { tickets, chargement, erreur, ...outils };
+    // Interrupteur « En retard uniquement » : il modifie l'adresse, la liste se recharge toute seule
+    const enRetard = computed(() => new URLSearchParams(props.params[0] || '').get('overdue') === '1');
+    const basculerRetard = () => { location.hash = enRetard.value ? '#/' : '#/?overdue=1'; };
+    const ouvrir = (id) => { location.hash = `#/ticket/${id}`; };
+
+    return { tickets, chargement, erreur, enRetard, basculerRetard, ouvrir, ...outils };
   },
   template: `
     <div class="d-flex align-items-center mb-3">
       <h1 class="h4 mb-0">Tickets</h1>
       <span class="badge text-bg-secondary ms-2">{{ tickets.length }}</span>
+      <div class="form-check form-switch ms-4 mb-0">
+        <input class="form-check-input" type="checkbox" id="filtre-retard" :checked="enRetard" @change="basculerRetard">
+        <label class="form-check-label" for="filtre-retard">En retard uniquement</label>
+      </div>
     </div>
     <div v-if="erreur" class="alert alert-danger">{{ erreur }}</div>
     <div v-else-if="chargement" class="text-secondary">Chargement…</div>
@@ -89,11 +117,12 @@ const ListeTickets = {
           <thead class="table-light">
             <tr>
               <th>N°</th><th>Résumé</th><th>Projet</th><th>Statut</th>
-              <th>Priorité</th><th>Responsable</th><th>Mis à jour</th>
+              <th>Priorité</th><th>Responsable</th><th>Échéance</th><th>Mis à jour</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="t in tickets" :key="t.id">
+            <tr v-if="!tickets.length"><td colspan="8" class="text-center text-secondary py-4">Aucun ticket.</td></tr>
+            <tr v-for="t in tickets" :key="t.id" @click="ouvrir(t.id)">
               <td class="text-secondary">#{{ t.id }}</td>
               <td>{{ t.summary }}</td>
               <td class="small">{{ t.project }}<div class="text-secondary">{{ t.category }}</div></td>
@@ -104,10 +133,207 @@ const ListeTickets = {
               </td>
               <td :class="'priorite-' + t.priority">{{ libelle('priority', t.priority) }}</td>
               <td>{{ t.handler || '—' }}</td>
+              <td>
+                <span v-if="enRetardTicket(t)" class="badge text-bg-danger">
+                  <i class="bi bi-alarm me-1"></i>En retard · {{ dureeRetard(t.due_date) }}
+                </span>
+                <span v-else-if="t.due_date && t.status < 80" class="small text-secondary" :title="dateHeure(t.due_date)">{{ dansDelai(t.due_date) }}</span>
+                <span v-else class="text-secondary">—</span>
+              </td>
               <td class="small text-secondary" :title="dateHeure(t.last_updated)">{{ depuis(t.last_updated) }}</td>
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  `,
+};
+
+const TableauDeBord = {
+  props: ["params"],
+  setup() {
+    const stats = ref(null);
+    const erreur = ref('');
+
+    onMounted(async () => {
+      try {
+        stats.value = await api('GET', '/api/stats');
+      } catch (e) {
+        erreur.value = e.message;
+      }
+    });
+
+    const parStatut = computed(() => etat.meta.enums.status.map((s) => ({ ...s, n: stats.value.by_status[s.id] ?? 0 })));
+    const parPriorite = computed(() => [...etat.meta.enums.priority].reverse()
+      .map((p) => ({ ...p, n: stats.value.by_priority[p.id] ?? 0 })).filter((p) => p.n > 0));
+
+    return { stats, erreur, parStatut, parPriorite, ...outils };
+  },
+  template: `
+    <h1 class="h4 mb-3">Tableau de bord</h1>
+    <div v-if="erreur" class="alert alert-danger">{{ erreur }}</div>
+    <div v-else-if="!stats" class="text-secondary">Chargement…</div>
+    <template v-else>
+      <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+          <a href="#/" class="text-decoration-none text-body">
+            <div class="card text-center shadow-sm"><div class="card-body">
+              <div class="display-6">{{ stats.total }}</div><div class="text-secondary">Tickets au total</div>
+            </div></div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a href="#/?handler_id=none" class="text-decoration-none text-body">
+            <div class="card text-center shadow-sm border-warning"><div class="card-body">
+              <div class="display-6">{{ stats.unassigned }}</div><div class="text-secondary">Non affectés</div>
+            </div></div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a href="#/?overdue=1" class="text-decoration-none text-body">
+            <div class="card text-center shadow-sm border-danger"><div class="card-body">
+              <div class="display-6 text-danger">{{ stats.overdue }}</div><div class="text-secondary">En retard</div>
+            </div></div>
+          </a>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-7">
+          <div class="card shadow-sm">
+            <div class="card-header">Tickets par statut</div>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item d-flex justify-content-between" v-for="s in parStatut" :key="s.id">
+                <a :href="'#/?status=' + s.id" class="text-decoration-none text-body">{{ s.label }}</a>
+                <span class="badge badge-statut" :style="{ background: s.color }">{{ s.n }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="card shadow-sm">
+            <div class="card-header">Tickets ouverts par priorité</div>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item d-flex justify-content-between" v-for="p in parPriorite" :key="p.id">
+                <span :class="'priorite-' + p.id">{{ p.label }}</span>
+                <span class="badge text-bg-secondary">{{ p.n }}</span>
+              </li>
+              <li class="list-group-item text-secondary" v-if="!parPriorite.length">Aucun ticket ouvert.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </template>
+  `,
+};
+
+const FicheTicket = {
+  props: ["params"],
+  setup(props) {
+    const ticket = ref(null);
+    const erreur = ref('');
+    const message = ref('');
+    const enCours = ref(false);
+    const form = reactive({ handler_id: '', status: 10 });
+
+    const remplir = (t) => {
+      ticket.value = t;
+      form.handler_id = t.handler_id ?? '';
+      form.status = t.status;
+    };
+
+    onMounted(async () => {
+      try {
+        remplir(await api('GET', `/api/tickets/${props.params[0]}`));
+      } catch (e) {
+        erreur.value = e.message;
+      }
+    });
+
+    async function enregistrer() {
+      enCours.value = true;
+      erreur.value = '';
+      message.value = '';
+      try {
+        // Seuls les champs modifiés sont envoyés : l'API passe alors un ticket « Nouveau » à « Affecté » toute seule
+        const corps = {};
+        if (form.handler_id !== (ticket.value.handler_id ?? '')) {
+          corps.handler_id = form.handler_id === '' ? null : Number(form.handler_id);
+        }
+        if (Number(form.status) !== ticket.value.status) {
+          corps.status = Number(form.status);
+        }
+        if (Object.keys(corps).length === 0) {
+          message.value = 'Aucune modification.';
+          return;
+        }
+        remplir(await api('PATCH', `/api/tickets/${ticket.value.id}`, corps));
+        message.value = 'Modifications enregistrées.';
+      } catch (e) {
+        erreur.value = e.message;
+      } finally {
+        enCours.value = false;
+      }
+    }
+
+    const techniciens = computed(() => etat.meta.users);
+    return { ticket, erreur, message, enCours, form, enregistrer, techniciens, statuts: computed(() => etat.meta.enums.status), ...outils };
+  },
+  template: `
+    <a href="#/" class="small text-decoration-none"><i class="bi bi-arrow-left me-1"></i>Retour aux tickets</a>
+    <div v-if="erreur && !ticket" class="alert alert-danger mt-3">{{ erreur }}</div>
+    <div v-else-if="!ticket" class="text-secondary mt-3">Chargement…</div>
+    <div v-else class="row g-3 mt-1">
+      <div class="col-md-8">
+        <div class="card shadow-sm">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span><strong>#{{ ticket.id }}</strong> · {{ ticket.summary }}</span>
+            <span v-if="enRetardTicket(ticket)" class="badge text-bg-danger"><i class="bi bi-alarm me-1"></i>En retard · {{ dureeRetard(ticket.due_date) }}</span>
+          </div>
+          <div class="card-body">
+            <p class="text-secondary small mb-1">
+              {{ ticket.project }}<span v-if="ticket.category"> · {{ ticket.category }}</span>
+              · déclaré par {{ ticket.reporter }} le {{ dateHeure(ticket.date_submitted) }}
+            </p>
+            <p class="mb-3" style="white-space: pre-wrap">{{ ticket.description }}</p>
+            <hr>
+            <h2 class="h6">Historique</h2>
+            <ul class="small text-secondary mb-0">
+              <li v-for="h in ticket.history" :key="h.id">
+                {{ dateHeure(h.date_modified) }} · {{ h.user }} :
+                <template v-if="h.type === 1">ticket créé</template>
+                <template v-else-if="h.type === 2">note ajoutée</template>
+                <template v-else-if="h.field_name === 'status'">statut {{ libelle('status', Number(h.old_value)) }} → {{ libelle('status', Number(h.new_value)) }}</template>
+                <template v-else-if="h.field_name === 'handler_id'">responsable modifié</template>
+                <template v-else>{{ h.field_name }} modifié</template>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm">
+          <div class="card-header">Traitement</div>
+          <form class="card-body" @submit.prevent="enregistrer">
+            <div v-if="erreur" class="alert alert-danger py-2">{{ erreur }}</div>
+            <div v-if="message" class="alert alert-success py-2">{{ message }}</div>
+            <label class="form-label" for="responsable">Responsable</label>
+            <select id="responsable" class="form-select mb-3" v-model="form.handler_id">
+              <option value="">— Non affecté —</option>
+              <option v-for="u in techniciens" :key="u.id" :value="u.id">{{ u.realname }}</option>
+            </select>
+            <label class="form-label" for="statut">Statut</label>
+            <select id="statut" class="form-select mb-3" v-model="form.status">
+              <option v-for="s in statuts" :key="s.id" :value="s.id">{{ s.label }}</option>
+            </select>
+            <div class="mb-1 small text-secondary">Priorité : <span :class="'priorite-' + ticket.priority">{{ libelle('priority', ticket.priority) }}</span></div>
+            <div class="mb-1 small text-secondary">Résolution : {{ libelle('resolution', ticket.resolution) }}</div>
+            <div class="mb-3 small text-secondary">
+              Échéance : {{ dateHeure(ticket.due_date) }}
+              <span v-if="enRetardTicket(ticket)" class="badge text-bg-danger ms-1"><i class="bi bi-alarm me-1"></i>En retard · {{ dureeRetard(ticket.due_date) }}</span>
+            </div>
+            <button class="btn btn-primary w-100" :disabled="enCours"><i class="bi bi-check2 me-1"></i>Enregistrer</button>
+          </form>
+        </div>
       </div>
     </div>
   `,
@@ -129,12 +355,15 @@ const PageIntrouvable = {
 
 // Chaque route : un motif sur l'ancre et un composant. Les groupes capturés arrivent dans params.
 const ROUTES = [
-  { motif: /^#?\/?$/, vue: ListeTickets },
+  { motif: /^#?\/?(?:\?(.*))?$/, vue: ListeTickets },
+  { motif: /^#\/tableau-de-bord$/, vue: TableauDeBord },
+  { motif: /^#\/ticket\/(\d+)$/, vue: FicheTicket },
 ];
 
 // Liens de la barre de navigation
 const MENU = [
   { href: '#/', label: 'Tickets', icone: 'bi-list-ul' },
+  { href: '#/tableau-de-bord', label: 'Tableau de bord', icone: 'bi-speedometer2' },
 ];
 
 createApp({
@@ -159,8 +388,14 @@ createApp({
       return { vue: PageIntrouvable, params: [] };
     });
 
+    // « Tickets » reste actif pour la liste (avec ou sans filtres) et pour la fiche d'un ticket
+    const actif = (lien) => (lien.href === '#/'
+      ? /^#?\/?(\?.*)?$/.test(route.value) || route.value.startsWith('#/ticket/')
+      : route.value.startsWith(lien.href));
+
     return {
       route,
+      actif,
       erreur,
       menu: MENU,
       meta: computed(() => etat.meta),

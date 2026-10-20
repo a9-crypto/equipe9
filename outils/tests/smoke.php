@@ -50,6 +50,15 @@ verifie('filtre statut : seulement « Nouveau »', $r['body'] !== [] && array_un
 $r = api_handle('GET', '/api/tickets', ['handler_id' => 'none']);
 verifie('filtre non affectés', $r['body'] !== [] && array_unique(array_column($r['body'], 'handler_id')) === [null]);
 
+// Tableau de bord
+$r = api_handle('GET', '/api/stats');
+verifie('stats : statut 200', $r['status'] === 200, $r);
+verifie('stats : total = nombre de tickets', ($r['body']['total'] ?? -1) === $nb, $r);
+verifie('stats : somme par statut = total', array_sum($r['body']['by_status'] ?? []) === $nb, $r);
+$nonAffectes = api_handle('GET', '/api/tickets', ['handler_id' => 'none'])['body'];
+$nonAffectesOuverts = count(array_filter($nonAffectes, fn($t) => $t['status'] < STATUS_RESOLVED));
+verifie('stats : non affectés ouverts', ($r['body']['unassigned'] ?? -1) === $nonAffectesOuverts, $r);
+
 // Création
 $r = api_handle('POST', '/api/tickets', [], ['summary' => 'x']);
 verifie('création : projet obligatoire (422)', $r['status'] === 422, $r);
@@ -64,6 +73,39 @@ $id = $r['body']['id'] ?? 0;
 verifie('création : statut « Nouveau »', ($r['body']['status'] ?? 0) === STATUS_NEW);
 verifie('création : historique NEW_BUG', ($r['body']['history'][0]['type'] ?? -1) == HISTORY_NEW_BUG);
 
+// Échéance (SLA) : calculée selon la priorité, sauf si elle est fournie
+$delaiPrevu = $r['body']['due_date'] - $r['body']['date_submitted'];
+verifie('SLA : priorité Élevée = échéance à 2 j', $delaiPrevu >= 2 * 86400 - 2 && $delaiPrevu <= 2 * 86400 + 2, $r['body']['due_date']);
+$r2 = api_handle('POST', '/api/tickets', [], ['project_id' => 1, 'summary' => 'Panne totale', 'description' => 'Plus de réseau.', 'priority' => 60]);
+$delai = $r2['body']['due_date'] - $r2['body']['date_submitted'];
+verifie('SLA : priorité Immédiate = échéance à 4 h', $delai >= 4 * 3600 - 2 && $delai <= 4 * 3600 + 2, $r2['body']['due_date']);
+api_handle('DELETE', '/api/tickets/' . $r2['body']['id']);
+$r2 = api_handle('POST', '/api/tickets', [], ['project_id' => 1, 'summary' => 'Sans priorité', 'description' => 'Test.', 'priority' => 10]);
+verifie('SLA : priorité Aucune = pas d\'échéance', array_key_exists('due_date', $r2['body']) && $r2['body']['due_date'] === null, $r2['body']);
+api_handle('DELETE', '/api/tickets/' . $r2['body']['id']);
+$r2 = api_handle('POST', '/api/tickets', [], ['project_id' => 1, 'summary' => 'Échéance imposée', 'description' => 'Test.', 'due_date' => 1000]);
+verifie('SLA : échéance fournie conservée', ($r2['body']['due_date'] ?? 0) === 1000, $r2['body']);
+$idRetard = $r2['body']['id'];
+$r2 = api_handle('GET', '/api/tickets', ['overdue' => '1']);
+verifie('filtre en retard : ticket ouvert dépassé présent', in_array($idRetard, array_column($r2['body'], 'id'), true));
+verifie('filtre en retard : tous ouverts et dépassés',
+    $r2['body'] !== [] && count(array_filter($r2['body'], fn($t) => $t['status'] < STATUS_RESOLVED && $t['due_date'] !== null && $t['due_date'] < time())) === count($r2['body']));
+verifie('filtre en retard : cohérent avec les stats', api_handle('GET', '/api/stats')['body']['overdue'] === count($r2['body']));
+api_handle('PATCH', "/api/tickets/$idRetard", [], ['status' => STATUS_RESOLVED]);
+$r2 = api_handle('GET', '/api/tickets', ['overdue' => '1']);
+verifie('filtre en retard : ticket résolu exclu', !in_array($idRetard, array_column($r2['body'], 'id'), true));
+api_handle('DELETE', "/api/tickets/$idRetard");
+
+// Échéance invalide : refusée à la création comme à la modification
+foreach (['abc', -5, 0, '12.5'] as $mauvaise) {
+    $r2 = api_handle('POST', '/api/tickets', [], ['project_id' => 1, 'summary' => 'Test', 'description' => 'Test.', 'due_date' => $mauvaise]);
+    verifie('échéance invalide refusée à la création (422) : ' . json_encode($mauvaise), $r2['status'] === 422, $r2);
+}
+$r2 = api_handle('PATCH', "/api/tickets/$id", [], ['due_date' => 'demain']);
+verifie('échéance invalide refusée à la modification (422)', $r2['status'] === 422, $r2);
+$r2 = api_handle('PATCH', "/api/tickets/$id", [], ['due_date' => null]);
+verifie('échéance effaçable (null)', $r2['status'] === 200 && $r2['body']['due_date'] === null, $r2);
+
 // Affectation : passage automatique au statut « Affecté »
 $r = api_handle('PATCH', "/api/tickets/$id", [], ['handler_id' => 2]);
 verifie('affectation : statut « Affecté »', ($r['body']['status'] ?? 0) === STATUS_ASSIGNED, $r);
@@ -71,6 +113,15 @@ verifie('affectation : statut « Affecté »', ($r['body']['status'] ?? 0) === S
 // Résolution : passage automatique à « Corrigé »
 $r = api_handle('PATCH', "/api/tickets/$id", [], ['status' => STATUS_RESOLVED]);
 verifie('résolution : « Corrigé »', ($r['body']['resolution'] ?? 0) === RESOLUTION_FIXED, $r);
+
+// Fermeture directe : résolution « Corrigé » si elle était ouverte
+$r = api_handle('POST', '/api/tickets', [], ['project_id' => 1, 'summary' => 'À fermer', 'description' => 'Test fermeture.']);
+$idFerme = $r['body']['id'] ?? 0;
+$r = api_handle('PATCH', "/api/tickets/$idFerme", [], ['status' => STATUS_CLOSED]);
+verifie('fermeture : « Corrigé »', ($r['body']['resolution'] ?? 0) === RESOLUTION_FIXED, $r);
+$r = api_handle('PATCH', "/api/tickets/$idFerme", [], ['handler_id' => null, 'status' => STATUS_NEW]);
+verifie('réouverture : « Réouvert »', ($r['body']['resolution'] ?? 0) === 30, $r);
+api_handle('DELETE', "/api/tickets/$idFerme");
 
 // Valeur invalide
 $r = api_handle('PATCH', "/api/tickets/$id", [], ['priority' => 999]);

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maquette – Ticketing</title>
+  <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body class="bg-body-tertiary">
+  <nav class="navbar navbar-expand bg-dark" data-bs-theme="dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#"><i class="bi bi-ticket-detailed me-2"></i>Ticketing</a>
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item"><a class="nav-link" href="#ecran-liste"><i class="bi bi-list-ul me-1"></i>Tickets</a></li>
+        <li class="nav-item"><a class="nav-link" href="#ecran-bord"><i class="bi bi-speedometer2 me-1"></i>Tableau de bord</a></li>
+      </ul>
+      <span class="navbar-text small"><i class="bi bi-person-circle me-1"></i>Camille Martin</span>
+    </div>
+  </nav>
+
+  <main class="container-fluid py-4">
+    <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>Maquette statique : 3 écrans, données fictives, aucun JavaScript.</div>
+
+    <!-- ÉCRAN 1 : Tableau de bord -->
+    <section id="ecran-bord" class="mb-5">
+      <h2 class="h4 mb-1">Écran 1 – Tableau de bord <span class="badge text-bg-success">nouveau</span></h2>
+      <p class="text-secondary small">Adresse <code>#/tableau-de-bord</code> · F1 · <code>GET /api/stats</code></p>
+
+      <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+          <div class="card text-center"><div class="card-body">
+            <div class="display-6">14</div><div class="text-secondary">Tickets au total</div>
+          </div></div>
+        </div>
+        <div class="col-6 col-md-3">
+          <a href="#ecran-liste" class="text-decoration-none">
+            <div class="card text-center border-warning"><div class="card-body">
+              <div class="display-6 text-warning-emphasis">3</div><div class="text-secondary">Non affectés</div>
+            </div></div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card text-center border-danger"><div class="card-body">
+            <div class="display-6 text-danger">4</div><div class="text-secondary">En retard</div>
+          </div></div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card text-center"><div class="card-body">
+            <div class="display-6">2</div><div class="text-secondary">Urgents ouverts</div>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-7">
+          <div class="card">
+            <div class="card-header">Tickets par statut</div>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item d-flex justify-content-between"><span>Nouveau</span><span class="badge text-bg-primary">4</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Commentaire</span><span class="badge text-bg-secondary">1</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Accepté</span><span class="badge text-bg-secondary">1</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Confirmé</span><span class="badge text-bg-secondary">2</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Affecté</span><span class="badge text-bg-info">3</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Résolu</span><span class="badge text-bg-success">1</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Fermé</span><span class="badge text-bg-dark">2</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="card">
+            <div class="card-header">Tickets par priorité</div>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item d-flex justify-content-between"><span>Immédiate</span><span class="badge text-bg-danger">1</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Urgente</span><span class="badge text-bg-danger">3</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Élevée</span><span class="badge text-bg-warning">2</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Normale</span><span class="badge text-bg-secondary">5</span></li>
+              <li class="list-group-item d-flex justify-content-between"><span>Basse</span><span class="badge text-bg-light border">3</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ÉCRAN 2 : Liste des tickets -->
+    <section id="ecran-liste" class="mb-5">
+      <h2 class="h4 mb-1">Écran 2 – Liste des tickets <span class="badge text-bg-secondary">existant, modifié</span></h2>
+      <p class="text-secondary small">Adresse <code>#/</code> · F2 + F3 · <code>GET /api/tickets</code> (nouveau filtre <code>overdue=1</code>)</p>
+
+      <div class="card">
+        <div class="card-body">
+          <div class="row g-2 mb-3">
+            <div class="col-md-3"><input class="form-control" placeholder="Rechercher…" disabled></div>
+            <div class="col-md-2"><select class="form-select" disabled><option>Tous les statuts</option></select></div>
+            <div class="col-md-2"><select class="form-select" disabled><option>Tous les responsables</option></select></div>
+            <div class="col-md-3 d-flex align-items-center">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" checked disabled>
+                <label class="form-check-label">En retard uniquement <span class="badge text-bg-success">nouveau</span></label>
+              </div>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr><th>N°</th><th>Résumé</th><th>Statut</th><th>Priorité</th><th>Responsable</th><th>Échéance <span class="badge text-bg-success">nouveau</span></th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#4</td><td>Écran noir au démarrage du poste</td>
+                  <td><span class="badge text-bg-primary">Nouveau</span></td>
+                  <td>Urgente</td><td class="text-secondary">—</td>
+                  <td><span class="badge text-bg-danger"><i class="bi bi-alarm me-1"></i>En retard · 2 h</span></td>
+                </tr>
+                <tr>
+                  <td>#2</td><td>VPN : déconnexion toutes les 10 minutes</td>
+                  <td><span class="badge text-bg-info">Affecté</span></td>
+                  <td>Urgente</td><td>Alex Bernard</td>
+                  <td><span class="badge text-bg-danger"><i class="bi bi-alarm me-1"></i>En retard · 1 j</span></td>
+                </tr>
+                <tr>
+                  <td>#12</td><td>Bulletins de paie non affichés</td>
+                  <td><span class="badge text-bg-info">Affecté</span></td>
+                  <td>Urgente</td><td>Alex Bernard</td>
+                  <td><span class="text-secondary small">dans 18 h</span></td>
+                </tr>
+                <tr>
+                  <td>#1</td><td>Imprimante du 2e étage hors ligne</td>
+                  <td><span class="badge text-bg-info">Affecté</span></td>
+                  <td>Élevée</td><td>Camille Martin</td>
+                  <td><span class="badge text-bg-danger"><i class="bi bi-alarm me-1"></i>En retard · 6 h</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="small text-secondary mt-2">Un clic sur une ligne ouvre la fiche (écran 3).</p>
+    </section>
+
+    <!-- ÉCRAN 3 : Fiche ticket -->
+    <section id="ecran-fiche" class="mb-5">
+      <h2 class="h4 mb-1">Écran 3 – Fiche ticket <span class="badge text-bg-success">nouveau</span></h2>
+      <p class="text-secondary small">Adresse <code>#/ticket/4</code> · F2 + F3 · <code>GET /api/tickets/{id}</code>, <code>PATCH /api/tickets/{id}</code>, <code>GET /api/meta</code></p>
+
+      <div class="row g-3">
+        <div class="col-md-8">
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span><strong>#4</strong> · Écran noir au démarrage du poste</span>
+              <span class="badge text-bg-danger"><i class="bi bi-alarm me-1"></i>En retard · 2 h</span>
+            </div>
+            <div class="card-body">
+              <p class="text-secondary small mb-1">Support poste de travail · Matériel · déclaré par Sam Dubois il y a 3 h</p>
+              <p>Le poste de la comptabilité affiche un écran noir après le logo constructeur. Le voyant d'alimentation est allumé.</p>
+              <hr>
+              <h3 class="h6">Historique</h3>
+              <ul class="small text-secondary mb-0">
+                <li>Sam Dubois a créé le ticket</li>
+                <li>Camille Martin : statut Nouveau → Affecté</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-header">Traitement</div>
+            <div class="card-body">
+              <label class="form-label">Responsable</label>
+              <select class="form-select mb-3" disabled><option>Alex Bernard</option></select>
+              <label class="form-label">Statut</label>
+              <select class="form-select mb-3" disabled><option>Affecté</option></select>
+              <label class="form-label">Priorité</label>
+              <div class="mb-3"><span class="badge text-bg-danger">Urgente</span></div>
+              <label class="form-label">Échéance</label>
+              <div class="mb-3">Hier, 17 h 30</div>
+              <button class="btn btn-primary w-100" disabled><i class="bi bi-check2 me-1"></i>Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
